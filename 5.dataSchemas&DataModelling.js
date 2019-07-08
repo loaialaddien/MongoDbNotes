@@ -84,6 +84,7 @@ references
 or mixed save only the data you want and not the whole object 
 
 */
+
 /**
  *                      one t o one relations
  * each document has a relation with another document, but each has one only (one document is associated with one and only one document in another collection)
@@ -120,9 +121,197 @@ or mixed save only the data you want and not the whole object
  * one document in a collection can be associated with one or more documents in another collection.
  *  For example, each customer can have many sales orders.
  * it can be made with references or with embedding documents
+ * 
+ *          embedding 
+ * {
+   title: "MongoDB: The Definitive Guide",
+   author: [ "Kristina Chodorow", "Mike Dirolf" ],
+   published_date: ISODate("2010-09-24"),
+   pages: 216,
+   language: "English",
+   publisher: {
+              name: "O'Reilly Media",
+              founded: 1980,
+              location: "CA"
+            }
+}
+                references 
+                {
+   _id: "oreilly",
+   name: "O'Reilly Media",
+   founded: 1980,
+   location: "CA"
+}
+
+{
+   _id: 123456789,
+   title: "MongoDB: The Definitive Guide",
+   author: [ "Kristina Chodorow", "Mike Dirolf" ],
+   published_date: ISODate("2010-09-24"),
+   pages: 216,
+   language: "English",
+   publisher_id: "oreilly"
+}
+
+{
+   _id: 234567890,
+   title: "50 Tips and Tricks for MongoDB Developer",
+   author: "Kristina Chodorow",
+   published_date: ISODate("2011-05-06"),
+   pages: 68,
+   language: "English",
+   publisher_id: "oreilly"
+}
  */
 /**
  * many to many
- * it's  a best practice to model many to many with references
- * A many-to-many relationship occurs when multiple documents in a table are associated with multiple document in another table. For example, a many-to-many relationship exists between customers and products
+ * it's  a best practice to model many to many with references but sometimes embedding is better (for instance if you ordered something and already paid for it, then its price changed, in reference world, the new price will appear which is not what you paid, in a embedded world, the actual price will be the one)
+ * A many-to-many relationship occurs when multiple documents in a collection are associated with multiple documents in another collection. For example, a many-to-many relationship exists between customers and products
+ *
  */
+/**
+ * we can use an approach that mixes references and embedding
+ * like embedding just the data we want and adding a reference to it
+ *
+ */
+
+///////////////////////////joining with $lookup
+/**
+ * Performs a left outer join to an unsharded collection in the same database to filter in documents from the “joined” collection for processing.
+ *  To each input document, the $lookup stage adds a new array field whose elements are the matching documents from the “joined” collection.
+ *  The $lookup stage passes these reshaped documents to the next stage.
+ db.orders.insert([
+   { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 },
+   { "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 },
+   { "_id" : 3  }
+])
+
+db.inventory.insert([
+   { "_id" : 1, "sku" : "almonds", description: "product 1", "instock" : 120 },
+   { "_id" : 2, "sku" : "bread", description: "product 2", "instock" : 80 },
+   { "_id" : 3, "sku" : "cashews", description: "product 3", "instock" : 60 },
+   { "_id" : 4, "sku" : "pecans", description: "product 4", "instock" : 70 },
+   { "_id" : 5, "sku": null, description: "Incomplete" },
+   { "_id" : 6 }
+])
+ 
+ db.orders.aggregate([
+   {
+     $lookup:
+       {
+         from: "inventory",   
+         localField: "item",
+         foreignField: "sku",
+         as: "inventory_docs"
+       }
+  }
+])
+results 
+{
+   "_id" : 1,
+   "item" : "almonds",
+   "price" : 12,
+   "quantity" : 2,
+   "inventory_docs" : [
+      { "_id" : 1, "sku" : "almonds", "description" : "product 1", "instock" : 120 }
+   ]
+}
+{
+   "_id" : 2,
+   "item" : "pecans",
+   "price" : 20,
+   "quantity" : 1,
+   "inventory_docs" : [
+      { "_id" : 4, "sku" : "pecans", "description" : "product 4", "instock" : 70 }
+   ]
+}
+{
+   "_id" : 3,
+   "inventory_docs" : [
+      { "_id" : 5, "sku" : null, "description" : "Incomplete" },
+      { "_id" : 6 }
+   ]
+}
+
+ */
+
+/**
+  * schema validation  https://docs.mongodb.com/manual/core/schema-validation/index.html
+  * mongodb is totally flexible, but you might want to enforce it for your business need
+  * when you try to add or update, and you have a schema, the schema will then either accept or reject your input based on the rules in the schema
+  * in the schema you can set which documents you want to validate and the rules and also what to do if validation fails 
+  * you can also set the validation mode to either strict (all inserts and updates), moderate(all inserts and updates after the schema is enforced (old won't be affected))
+  * for validation if the validation fails you can either throw error or warn and log but proceed
+  * /**validationLevel option, which determines how strictly MongoDB applies validation rules to existing documents during an update, and
+validationAction option, which determines whether MongoDB should error and reject documents that violate the validation rules or warn about the violations in the log but allow invalid documents.
+  *  
+  * 
+  *         adding a collection validation 
+  * 
+  * To specify validation rules when creating a new collection, use db.createCollection() with the validator option.
+  * To add document validation to an existing collection, use collMod command with the validator option.
+
+
+  db.createCollection("students", {
+   validator: {
+      $jsonSchema: {
+         bsonType: "object",
+         required: [ "name", "year", "major", "gpa", "address.city", "address.street" ],
+         properties: {
+            name: {
+               bsonType: "string",
+               description: "must be a string and is required"
+            },
+            gender: {
+               bsonType: "string",
+               description: "must be a string and is not required"
+            },
+            year: {
+               bsonType: "int",
+               minimum: 2017,
+               maximum: 3017,
+               exclusiveMaximum: false,
+               description: "must be an integer in [ 2017, 3017 ] and is required"
+            },
+            major: {
+               enum: [ "Math", "English", "Computer Science", "History", null ],
+               description: "can only be one of the enum values and is required"
+            },
+            gpa: {
+               bsonType: [ "double" ],
+               minimum: 0,
+               description: "must be a double and is required"
+            },
+            "address.city" : {
+               bsonType: "string",
+               description: "must be a string and is required"
+            },
+            "address.street" : {
+               bsonType: "string",
+               description: "must be a string and is required"
+            }
+         }
+      }
+   }
+})
+//////
+/////////////to add a validation for an existing collection OR changing existing one 
+db.runCommand( {                //runCommand is used for adminstrative command
+   collMod: "contacts",
+   validator: { $jsonSchema: {
+      bsonType: "object",
+      required: [ "phone", "name" ],
+      properties: {
+         phone: {
+            bsonType: "string",
+            description: "must be a string and is required"
+         },
+         name: {
+            bsonType: "string",
+            description: "must be a string and is required"
+         }
+      }
+   } },
+   validationLevel: "moderate"
+} )
+  */
