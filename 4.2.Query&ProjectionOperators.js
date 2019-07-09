@@ -31,7 +31,7 @@ $slice	    Limits the number of elements projected from an array. Supports skip 
 
 Element
 Name	Description
-$exists	Matches documents that have the specified field.
+$exists	returns documents that have the specified field.
 $type	Selects documents if a field is of the specified type.
 
 
